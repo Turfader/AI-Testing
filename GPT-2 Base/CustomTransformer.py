@@ -42,8 +42,9 @@ class StreamingTextDataset(IterableDataset):
 
 # === Custom Transformer Definition ===
 class CustomTransformer(nn.Module):
-    def __init__(self, vocab_size, hidden_size=256, n_heads=4, n_layers=4, max_length=128):
+    def __init__(self, vocab_size, hidden_size=256, n_heads=4, n_layers=4, max_length=128, pad_token_id=None):
         super().__init__()
+        self.pad_token_id = pad_token_id
         self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
         self.position_embeddings = nn.Embedding(max_length, hidden_size)
 
@@ -58,31 +59,52 @@ class CustomTransformer(nn.Module):
         self.lm_head = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, input_ids, attention_mask=None, labels=None):
-        seq_length = input_ids.size(1)
-        positions = torch.arange(0, seq_length, device=input_ids.device).unsqueeze(0)
+        batch, seq_len = input_ids.size()
+
+        # embeddings + positions
+        positions = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
         x = self.embed_tokens(input_ids) + self.position_embeddings(positions)
-        x = self.transformer(x, src_key_padding_mask=~attention_mask.bool() if attention_mask is not None else None)
+
+        # causal mask (float type, as required by nn.Transformer)
+        causal_mask = torch.triu(
+            torch.full((seq_len, seq_len), float('-inf'), device=input_ids.device),
+            diagonal=1
+        )
+
+        # Fix: ensure src_key_padding_mask is explicitly bool
+        key_padding_mask = ~attention_mask.to(torch.bool) if attention_mask is not None else None
+
+        x = self.transformer(
+            x,
+            mask=causal_mask,
+            src_key_padding_mask=key_padding_mask
+        )
+
         logits = self.lm_head(x)
 
         loss = None
         if labels is not None:
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+            shift_logits = logits[:, :-1, :].contiguous()
+            shift_labels = labels[:, 1:].contiguous()
+            loss_fct = nn.CrossEntropyLoss(ignore_index=self.pad_token_id)
+            loss = loss_fct(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1)
+            )
 
-        return CausalLMOutput(
-            loss=loss,
-            logits=logits
-        )
+        return CausalLMOutput(loss=loss, logits=logits)
 
 
 class CustomConfig(PretrainedConfig):
-    def __init__(self, vocab_size=50257, hidden_size=256, n_heads=4, n_layers=4, max_length=128, **kwargs):
+    def __init__(self, vocab_size=50257, hidden_size=256, n_heads=4, n_layers=4, max_length=128,
+                 pad_token_id=50256, **kwargs):
         super().__init__(**kwargs)
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.n_heads = n_heads
         self.n_layers = n_layers
         self.max_length = max_length
+        self.pad_token_id = pad_token_id
 
 
 class CustomGPTModel(PreTrainedModel):
@@ -95,7 +117,8 @@ class CustomGPTModel(PreTrainedModel):
             hidden_size=config.hidden_size,
             n_heads=config.n_heads,
             n_layers=config.n_layers,
-            max_length=config.max_length
+            max_length=config.max_length,
+            pad_token_id=config.pad_token_id
         )
         self.post_init()
 
