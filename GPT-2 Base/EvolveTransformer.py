@@ -87,7 +87,7 @@ class PopulationManager:
 
     def _evaluate(self, model, optimizer) -> float:
         model.train()
-        total_loss = 0.0
+        min_loss = float('inf')  # Initialize min_loss as infinity
         it = iter(self.loader)
         for step in range(self.eval_steps):
             batch = next(it)
@@ -98,13 +98,16 @@ class PopulationManager:
             loss = outputs.loss
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
+
+            # Update min_loss with the current loss
+            min_loss = min(min_loss, loss.item())  # Update min_loss if current loss is smaller
 
             if (step + 1) % 10 == 0 or step == 0:
                 print(f"Step {step + 1}/{self.eval_steps} - Loss: {loss.item():.4f}")
                 logging.info(f"Step {step + 1}/{self.eval_steps} - Loss: {loss.item():.4f}")
 
-        return total_loss / self.eval_steps
+        # Return the minimum loss over the generation
+        return min_loss
 
     def _save_best(self, parents: list, generation: int):
         gen_dir = os.path.join(self.output_dir, f"generation_{generation}")
