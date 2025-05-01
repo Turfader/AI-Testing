@@ -143,7 +143,7 @@ def main():
     training_args = TrainingArguments(
         output_dir="./custom-transformer",
         per_device_train_batch_size=8,
-        max_steps=1000,
+        max_steps=250,
         num_train_epochs=1,
         weight_decay=0.01,
         logging_dir='./logs',

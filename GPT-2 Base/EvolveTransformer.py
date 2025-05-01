@@ -8,7 +8,8 @@ import logging
 from CustomTransformer import StreamingTextDataset, CustomConfig, CustomGPTModel
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    filename='training_debug.log',
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
 )
 
@@ -99,7 +100,7 @@ class PopulationManager:
             optimizer.step()
             total_loss += loss.item()
 
-            if (step + 1) % 50 == 0 or step == 0:
+            if (step + 1) % 10 == 0 or step == 0:
                 print(f"Step {step + 1}/{self.eval_steps} - Loss: {loss.item():.4f}")
                 logging.info(f"Step {step + 1}/{self.eval_steps} - Loss: {loss.item():.4f}")
 
